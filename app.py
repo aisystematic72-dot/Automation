@@ -8,6 +8,7 @@ import uuid
 import json
 import os
 import cloudinary
+import traceback
 import smtplib
 import random
 from datetime import datetime, timedelta
@@ -583,6 +584,7 @@ def publish():
             instagram_success = False
 
             errors = []
+            creation_id = None
 
             # ======================================
             # IMAGE
@@ -1031,6 +1033,9 @@ def publish():
                 })
 
         except Exception as error:
+
+            print(f"ERROR while publishing row {row_number}:")
+            traceback.print_exc()
 
             results.append({
                 "row": row_number,
