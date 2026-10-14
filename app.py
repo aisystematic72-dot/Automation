@@ -14,6 +14,7 @@ import random
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 import requests
+from facebook_connect import create_facebook_blueprint
 import cloudinary.uploader
 
 from dotenv import load_dotenv
@@ -60,6 +61,7 @@ client = gspread.authorize(credentials)
 
 # Replace with your actual Google Sheet name
 sheet = client.open("Video Automation").worksheet("Users")
+app.register_blueprint(create_facebook_blueprint(lambda: sheet))
 
 def send_reset_code_email(receiver_email, code):
 
