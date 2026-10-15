@@ -5,16 +5,13 @@ import gspread
 import time
 from gspread.exceptions import APIError
 import uuid
-import json
 import os
 import cloudinary
-import traceback
 import smtplib
 import random
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 import requests
-from facebook_connect import create_facebook_blueprint
 import cloudinary.uploader
 
 from dotenv import load_dotenv
@@ -48,12 +45,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-google_credentials = json.loads(
-    os.getenv("GOOGLE_CREDENTIALS_JSON")
-)
-
-credentials = Credentials.from_service_account_info(
-    google_credentials,
+credentials = Credentials.from_service_account_file(
+    "credentials.json",
     scopes=SCOPES
 )
 
@@ -61,7 +54,6 @@ client = gspread.authorize(credentials)
 
 # Replace with your actual Google Sheet name
 sheet = client.open("Video Automation").worksheet("Users")
-app.register_blueprint(create_facebook_blueprint(lambda: sheet))
 
 def send_reset_code_email(receiver_email, code):
 
@@ -586,7 +578,6 @@ def publish():
             instagram_success = False
 
             errors = []
-            creation_id = None
 
             # ======================================
             # IMAGE
@@ -646,98 +637,42 @@ def publish():
                     )
 
                     create_result = create_response.json()
-                    print("Instagram image create response:", create_result)
 
                     if create_response.ok:
 
-                        creation_id = create_result.get("id")
+                        creation_id = create_result.get(
+                            "id"
+                        )
 
-                        if not creation_id:
-                            errors.append(
-                                "Instagram: Media container ID was not returned."
-                            )
+                        publish_response = requests.post(
+                            f"https://graph.facebook.com/{instagram_user_id}/media_publish",
+                            data={
+                                "creation_id": creation_id,
+                                "access_token": instagram_access_token
+                            },
+                            timeout=60
+                        )
+
+                        publish_result = (
+                            publish_response.json()
+                        )
+
+                        if publish_response.ok:
+
+                            instagram_success = True
 
                         else:
 
-                            media_ready = False
-                            media_failed = False
-
-                            for attempt in range(20):
-
-                                time.sleep(2)
-
-                                status_response = requests.get(
-                                    f"https://graph.facebook.com/{creation_id}",
-                                    params={
-                                        "fields": "status_code,status",
-                                        "access_token": instagram_access_token
-                                    },
-                                    timeout=30
+                            errors.append(
+                                "Instagram: " +
+                                publish_result.get(
+                                    "error",
+                                    {}
+                                ).get(
+                                    "message",
+                                    "Instagram publish failed."
                                 )
-
-                                status_result = status_response.json()
-
-                                print(
-                                    f"Instagram image status attempt {attempt + 1}:",
-                                    status_result
-                                )
-
-                                status_code = status_result.get("status_code")
-
-                                if status_code == "FINISHED":
-
-                                    media_ready = True
-                                    break
-
-                                elif status_code == "ERROR":
-
-                                    media_failed = True
-
-                                    errors.append(
-                                        "Instagram: " +
-                                        status_result.get(
-                                            "status",
-                                            "Media processing failed."
-                                        )
-                                    )
-
-                                    break
-
-                            if media_ready:
-
-                                publish_response = requests.post(
-                                    f"https://graph.facebook.com/{instagram_user_id}/media_publish",
-                                    data={
-                                        "creation_id": creation_id,
-                                        "access_token": instagram_access_token
-                                    },
-                                    timeout=60
-                                )
-
-                                publish_result = publish_response.json()
-
-                                if publish_response.ok:
-
-                                    instagram_success = True
-
-                                else:
-
-                                    errors.append(
-                                        "Instagram: " +
-                                        publish_result.get(
-                                            "error",
-                                            {}
-                                        ).get(
-                                            "message",
-                                            "Instagram publish failed."
-                                        )
-                                    )
-
-                            elif not media_failed:
-
-                                errors.append(
-                                    "Instagram: Media processing timed out."
-                                )
+                            )
 
                     else:
 
@@ -812,76 +747,79 @@ def publish():
 
                     create_result = create_response.json()
 
-                    print("Instagram Reel create response:", create_result)
-
                     if create_response.ok:
 
-                        creation_id = create_result.get("id")
+                        creation_id = create_result.get(
+                            "id"
+                        )
 
-                        if not creation_id:
+                        # ==================================
+                        # WAIT FOR INSTAGRAM PROCESSING
+                        # ==================================
 
-                            errors.append(
-                                "Instagram: Reel container ID was not returned."
+                        reel_ready = False
+                        reel_failed = False
+
+                        for attempt in range(60):
+
+                            time.sleep(5)
+
+                            status_response = requests.get(
+                                f"https://graph.facebook.com/{creation_id}",
+                                params={
+                                    "fields": "status_code,status",
+                                    "access_token": instagram_access_token
+                                },
+                                timeout=30
                             )
 
-                        else:
+                            status_result = (
+                                status_response.json()
+                            )
 
-                            # ==================================
-                            # WAIT FOR INSTAGRAM PROCESSING
-                            # ==================================
-
-                            reel_ready = False
-                            reel_failed = False
-
-                            for attempt in range(60):
-
-                                time.sleep(5)
-
-                                status_response = requests.get(
-                                    f"https://graph.facebook.com/{creation_id}",
-                                    params={
-                                        "fields": "status_code,status",
-                                        "access_token": instagram_access_token
-                                    },
-                                    timeout=30
+                            status_code = (
+                                status_result.get(
+                                    "status_code"
                                 )
+                            )
 
-                                status_result = status_response.json()
+                            print(
+                                f"Instagram Reel status attempt "
+                                f"{attempt + 1}:",
+                                status_result
+                            )
 
-                                status_code = status_result.get("status_code")
+                            if status_code == "FINISHED":
 
-                                print(
-                                    f"Instagram Reel status attempt {attempt + 1}:",
-                                    status_result
-                                )
+                                reel_ready = True
+                                break
 
-                                if status_code == "FINISHED":
+                            elif status_code == "ERROR":
 
-                                    reel_ready = True
-                                    break
+                                reel_failed = True
 
-                                elif status_code == "ERROR":
-
-                                    reel_failed = True
-
-                                    processing_error = status_result.get(
+                                processing_error = (
+                                    status_result.get(
                                         "status",
                                         "Instagram Reel processing failed."
                                     )
+                                )
 
-                                    errors.append(
-                                        f"Instagram: {processing_error}"
-                                    )
+                                errors.append(
+                                    f"Instagram: "
+                                    f"{processing_error}"
+                                )
 
-                                    break
+                                break
 
-                            # ==================================
-                            # PUBLISH INSTAGRAM REEL
-                            # ==================================
+                        # ==================================
+                        # PUBLISH INSTAGRAM REEL
+                        # ==================================
 
-                            if reel_ready:
+                        if reel_ready:
 
-                                publish_response = requests.post(
+                            publish_response = (
+                                requests.post(
                                     f"https://graph.facebook.com/{instagram_user_id}/media_publish",
                                     data={
                                         "creation_id": creation_id,
@@ -889,31 +827,35 @@ def publish():
                                     },
                                     timeout=60
                                 )
+                            )
 
-                                publish_result = publish_response.json()
+                            publish_result = (
+                                publish_response.json()
+                            )
 
-                                if publish_response.ok:
+                            if publish_response.ok:
 
-                                    instagram_success = True
+                                instagram_success = True
 
-                                else:
-
-                                    errors.append(
-                                        "Instagram: " +
-                                        publish_result.get(
-                                            "error",
-                                            {}
-                                        ).get(
-                                            "message",
-                                            "Instagram Reel publish failed."
-                                        )
-                                    )
-
-                            elif not reel_failed:
+                            else:
 
                                 errors.append(
-                                    "Instagram: Reel processing took longer than 5 minutes."
+                                    "Instagram: " +
+                                    publish_result.get(
+                                        "error",
+                                        {}
+                                    ).get(
+                                        "message",
+                                        "Instagram Reel publish failed."
+                                    )
                                 )
+
+                        elif not reel_failed:
+
+                            errors.append(
+                                "Instagram: Reel processing "
+                                "took longer than 5 minutes."
+                            )
 
                     else:
 
@@ -1035,9 +977,6 @@ def publish():
                 })
 
         except Exception as error:
-
-            print(f"ERROR while publishing row {row_number}:")
-            traceback.print_exc()
 
             results.append({
                 "row": row_number,
