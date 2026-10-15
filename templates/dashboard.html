@@ -117,76 +117,20 @@
             <h2>Facebook</h2>
 
             {% if facebook_connected %}
-
-                <button class="save-btn" disabled>
-                    Connected
-                </button>
-
+                <button class="save-btn" disabled>Connected</button>
             {% else %}
-
-                <button
-                    class="connect-btn"
-                    onclick="showFacebookForm()"
-                >
-                    Connect It
-                </button>
-
+                <button class="connect-btn" type="button" onclick="showFacebookForm()">Connect It</button>
             {% endif %}
-
         </div>
-
-
         {% if not facebook_connected %}
-
         <div id="facebookForm" class="connect-form">
-
-            <form action="/connect-facebook" method="POST">
-
-                <input
-                    type="text"
-                    name="access_token"
-                    placeholder="Facebook Access Token"
-                    required
-                >
-
-                <input
-                    type="text"
-                    name="page_id"
-                    placeholder="Facebook Page ID"
-                    required
-                >
-
-                <button
-                    class="save-btn"
-                    type="submit"
-                >
-                    Save Connection
-                </button>
-
+            <form action="{{ url_for('connect_facebook') }}" method="POST">
+                <input type="password" name="access_token" placeholder="Facebook Access Token" required>
+                <input type="text" name="page_id" placeholder="Facebook Page ID" required>
+                <button class="save-btn" type="submit">Save Connection</button>
             </form>
-
-
-            <a href="/contact-team">
-                <button
-                    class="help-btn"
-                    type="button"
-                >
-                    Contact Team
-                </button>
-            </a>
-
-
-            <button
-                class="tutorial-btn"
-                type="button"
-            >
-                View Tutorial
-            </button>
-
         </div>
-
         {% endif %}
-
     </div>
 
 
