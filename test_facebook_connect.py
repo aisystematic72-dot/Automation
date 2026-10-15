@@ -38,6 +38,24 @@ class FacebookConnectionTests(unittest.TestCase):
         get.assert_not_called()
 
     @patch("facebook_connect.requests.get")
+    def test_empty_pages_identifies_missing_permission_without_leaking_tokens(self, get):
+        responses = [{"access_token": "short-secret"}, {"access_token": "long-secret"},
+                     {"data": []}, {"data": [
+                         {"permission": "pages_show_list", "status": "granted"},
+                         {"permission": "pages_read_engagement", "status": "granted"}]}]
+        get.side_effect = [Mock(ok=True, json=Mock(return_value=data)) for data in responses]
+        self.client.get("/auth/facebook")
+        with self.client.session_transaction() as state:
+            oauth_state = state["facebook_oauth"]["state"]
+        with self.assertLogs(self.client.application.logger, level="WARNING") as logs:
+            response = self.client.get(f"/auth/facebook/callback?state={oauth_state}&code=code")
+        self.assertIn(b"pages_manage_posts", response.data)
+        self.assertIn("returned=0", str(logs.output))
+        self.assertNotIn("long-secret", str(logs.output))
+        self.assertNotIn(b"long-secret", response.data)
+        self.sheet.update.assert_not_called()
+
+    @patch("facebook_connect.requests.get")
     def test_authorize_select_and_store_page_token(self, get):
         responses = [{"access_token": "short"}, {"access_token": "long"},
                      {"data": [{"id": "123", "name": "My Page", "access_token": "page-secret", "tasks": ["CREATE_CONTENT"]}]}]

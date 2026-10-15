@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from urllib.parse import urlencode
 
 import requests
-from flask import Blueprint, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, redirect, render_template, request, session, url_for
 
 
 def create_facebook_blueprint(get_sheet):
@@ -82,11 +82,18 @@ def create_facebook_blueprint(get_sheet):
                 "grant_type": "fb_exchange_token", "client_id": config["FACEBOOK_APP_ID"],
                 "client_secret": config["FACEBOOK_APP_SECRET"], "fb_exchange_token": token})["access_token"]
             pages, after = [], None
+            returned_count = 0
+            token_count = 0
+            publishing_count = 0
             while True:
                 params = {"fields": "id,name,access_token,tasks", "limit": 100}
                 if after:
                     params["after"] = after
                 data = graph(config, "me/accounts", params, token)
+                returned = data.get("data", [])
+                returned_count += len(returned)
+                token_count += sum(bool(p.get("access_token")) for p in returned)
+                publishing_count += sum("CREATE_CONTENT" in p.get("tasks", []) for p in returned)
                 pages.extend(p for p in data.get("data", []) if p.get("access_token")
                              and "CREATE_CONTENT" in p.get("tasks", []))
                 paging = data.get("paging", {})
@@ -95,7 +102,24 @@ def create_facebook_blueprint(get_sheet):
                     break
                 after = cursor
             if not pages:
-                return error("No Pages with publishing access were returned. Check your Page role and grant the requested permissions.")
+                required = {"pages_show_list", "pages_read_engagement", "pages_manage_posts"}
+                permissions = graph(config, "me/permissions", token=token)
+                granted = {p.get("permission") for p in permissions.get("data", [])
+                           if p.get("status") == "granted"}
+                missing = sorted(required - granted)
+                current_app.logger.warning(
+                    "Facebook discovery: returned=%d with_token=%d with_create_content=%d missing_permissions=%s",
+                    returned_count, token_count, publishing_count, ",".join(missing) or "none")
+                if missing:
+                    return error("Facebook did not grant these required permissions: " + ", ".join(missing)
+                                 + ". Check your Meta login configuration and reconnect with the requested access.")
+                if not returned_count:
+                    return error("Facebook returned no Pages, although the required permissions are granted. "
+                                 "Edit this app's access in Facebook Business Integrations to include your Page, "
+                                 "and confirm the authorizing profile has Page access in your business portfolio.")
+                return error("Facebook returned Pages, but none included both a Page access token and the "
+                             "CREATE_CONTENT publishing task. Check the Page assignment for the authorizing "
+                             "profile. Discovery counts are available in the server logs.")
             pending_id = secrets.token_urlsafe(32)
             with database() as db:
                 db.execute("INSERT INTO pending VALUES (?, ?, ?, ?)",
