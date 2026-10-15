@@ -116,10 +116,77 @@
 
             <h2>Facebook</h2>
 
-            <a class="connect-btn" href="{{ url_for('facebook.start') }}" target="_blank" rel="noopener">{{ 'Reconnect Facebook' if facebook_connected else 'Connect Facebook' }}</a>
-            {% if facebook_connected %}<span>Connected</span>{% endif %}
+            {% if facebook_connected %}
+
+                <button class="save-btn" disabled>
+                    Connected
+                </button>
+
+            {% else %}
+
+                <button
+                    class="connect-btn"
+                    onclick="showFacebookForm()"
+                >
+                    Connect It
+                </button>
+
+            {% endif %}
+
         </div>
-        <p>Connect through Facebook and choose a Page you manage.</p>
+
+
+        {% if not facebook_connected %}
+
+        <div id="facebookForm" class="connect-form">
+
+            <form action="/connect-facebook" method="POST">
+
+                <input
+                    type="text"
+                    name="access_token"
+                    placeholder="Facebook Access Token"
+                    required
+                >
+
+                <input
+                    type="text"
+                    name="page_id"
+                    placeholder="Facebook Page ID"
+                    required
+                >
+
+                <button
+                    class="save-btn"
+                    type="submit"
+                >
+                    Save Connection
+                </button>
+
+            </form>
+
+
+            <a href="/contact-team">
+                <button
+                    class="help-btn"
+                    type="button"
+                >
+                    Contact Team
+                </button>
+            </a>
+
+
+            <button
+                class="tutorial-btn"
+                type="button"
+            >
+                View Tutorial
+            </button>
+
+        </div>
+
+        {% endif %}
+
     </div>
 
 
